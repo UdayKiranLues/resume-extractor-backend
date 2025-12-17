@@ -12,21 +12,37 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// MongoDB Connection
+// MongoDB Connection for Serverless
+let isConnected = false;
+
 const connectDB = async () => {
+  if (isConnected) {
+    console.log('Using existing database connection');
+    return;
+  }
+
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+    const db = await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
     });
+    
+    isConnected = db.connections[0].readyState === 1;
     console.log('MongoDB connected successfully');
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
-connectDB();
+// Connect to database on each request for serverless
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Database connection failed' });
+  }
+});
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
